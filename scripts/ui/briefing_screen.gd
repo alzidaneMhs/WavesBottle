@@ -10,6 +10,17 @@ var seed_value := 0
 var cfg: Dictionary = {}
 var content: Control
 
+const SIDE_NAMES := {"port": "Left (Port)", "starboard": "Right (Stbd)", "bow": "Front (Bow)", "stern": "Rear (Stern)", "turret": "Turret"}
+const TIPS := [
+	"Your main guns fire to the SIDES. Turn so the enemy is on your left or right, then fire that side.",
+	"Set the throttle once and it stays. Use your hands for steering and firing.",
+	"Hits, kills and close dodges build Wake. Getting hit lowers it.",
+	"Bonus goals are optional. Skip them if a stage feels hard, and come back later.",
+	"Low on hull? Your Repair module heals you. Use it before it's too late.",
+	"Sail with the wind to go faster. Watch the compass in the top right.",
+	"Spend Research in the Harbor to unlock new weapons, then fit them in the Fitting Dock.",
+]
+
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -88,7 +99,7 @@ func _build() -> void:
 	left.add_child(UiKit.wrap(objective_text(cfg), 17, Color.WHITE, 590))
 	var opts: Array = cfg.get("optional", [])
 	if not opts.is_empty():
-		left.add_child(UiKit.label("OPTIONAL OBJECTIVES", 15, UiKit.ACCENT))
+		left.add_child(UiKit.label("BONUS GOALS  (optional, for a better grade)", 15, UiKit.ACCENT))
 		for i in opts.size():
 			var done: bool = source.get("kind", "") == "campaign" and Profile.optional_done(str(source["id"]), i)
 			left.add_child(UiKit.label(("[done] " if done else "- ") + str(opts[i]["text"]), 15, Color(0.4, 1.0, 0.7) if done else UiKit.TEXT))
@@ -98,7 +109,14 @@ func _build() -> void:
 		left.add_child(UiKit.label("MODIFIER: %s  (reward x%.2f)" % [md["name"], float(md["reward"])], 15, Color(1.0, 0.75, 0.4)))
 		left.add_child(UiKit.wrap(str(md["desc"]), 14, UiKit.DIM, 590))
 	left.add_child(UiKit.label("REWARDS", 15, UiKit.ACCENT))
-	left.add_child(UiKit.wrap(_reward_text(), 15, GameData.COL_SALVAGE, 590))
+	var rw := _reward_parts()
+	left.add_child(UiKit.label(str(rw[0]), 17, GameData.COL_SALVAGE))
+	left.add_child(UiKit.wrap(str(rw[1]), 14, UiKit.DIM, 590))
+	var tip := _tip()
+	if tip != "":
+		var tc := UiKit.card(UiKit.GOLD, 10.0)
+		left.add_child(tc)
+		tc.add_child(UiKit.wrap("Tip: " + tip, 15, UiKit.GOLD, 570))
 	var right := UiKit.vbox(8)
 	row.add_child(right)
 	if str(cfg.get("mode", "")) != "classic":
@@ -107,9 +125,13 @@ func _build() -> void:
 		for t in GameData.DIFFICULTY_ORDER:
 			if Profile.difficulty_unlocked(t):
 				tiers.append(t)
-				names.append("%s  -  %s" % [GameData.DIFFICULTIES[t]["name"], GameData.DIFFICULTIES[t]["desc"]])
-		right.add_child(UiKit.label("Difficulty", 15, UiKit.DIM))
-		right.add_child(UiKit.option(names, tiers.find(tier), _pick_tier.bind(tiers), 540))
+				names.append(str(GameData.DIFFICULTIES[t]["name"]))
+		if tiers.size() > 1:
+			right.add_child(UiKit.label("Difficulty", 15, UiKit.DIM))
+			right.add_child(UiKit.option(names, tiers.find(tier), _pick_tier.bind(tiers), 540))
+			right.add_child(UiKit.wrap(str(GameData.DIFFICULTIES[tier]["desc"]), 14, UiKit.DIM, 540))
+		else:
+			right.add_child(UiKit.label("Difficulty: %s" % GameData.DIFFICULTIES[tier]["name"], 16, UiKit.TEXT))
 		if source.get("kind", "") == "campaign" and Profile.remix_unlocked():
 			right.add_child(UiKit.label("Campaign mode", 15, UiKit.DIM))
 			right.add_child(UiKit.option(["Standard campaign", "New Game+ Remix  -  remixed fleets, tougher bosses, x1.5 rewards"], 1 if Profile.remix_active() else 0, _pick_remix, 540))
@@ -119,23 +141,36 @@ func _build() -> void:
 		if Profile.ship_unlocked(id):
 			owned.append(id)
 			snames.append("%s  -  %s" % [GameData.SHIPS[id]["name"], GameData.SHIPS[id]["class"]])
-	right.add_child(UiKit.label("Ship", 15, UiKit.DIM))
-	right.add_child(UiKit.option(snames, owned.find(ship), _pick_ship.bind(owned), 540))
+	if owned.size() > 1:
+		right.add_child(UiKit.label("Ship", 15, UiKit.DIM))
+		right.add_child(UiKit.option(snames, owned.find(ship), _pick_ship.bind(owned), 540))
+	else:
+		right.add_child(UiKit.label("Ship: %s" % GameData.SHIPS[ship]["name"], 16, UiKit.TEXT))
 	var bnames: Array = []
 	for b in Profile.builds(ship):
 		bnames.append(str(b.get("name", "Build")))
-	right.add_child(UiKit.label("Build", 15, UiKit.DIM))
-	right.add_child(UiKit.option(bnames, build_idx, _pick_build, 540))
+	if bnames.size() > 1:
+		right.add_child(UiKit.label("Build", 15, UiKit.DIM))
+		right.add_child(UiKit.option(bnames, build_idx, _pick_build, 540))
 	var build: Dictionary = Profile.sanitize_build(ship, Profile.builds(ship)[build_idx])
 	var stats := ShipStats.from_build(ship, build, Profile.perk(ship))
-	var parts: PackedStringArray = []
+	var lc := UiKit.card()
+	right.add_child(lc)
+	var lv := UiKit.vbox(4)
+	lc.add_child(lv)
+	lv.add_child(UiKit.label("YOUR LOADOUT", 14, UiKit.ACCENT))
 	for st in stats.stations:
-		parts.append("%s %s" % [GameData.SLOT_LABELS[st["slot"]], st["weapon"]["short"]])
-	right.add_child(UiKit.wrap("   ".join(parts), 14, UiKit.TEXT, 540))
-	var mods: PackedStringArray = []
+		var h := UiKit.hbox(8)
+		var sl := UiKit.label(str(SIDE_NAMES.get(st["slot"], st["slot"])), 15, GameData.SLOT_COLORS[st["slot"]])
+		sl.custom_minimum_size = Vector2(150, 0)
+		h.add_child(sl)
+		var wd: Dictionary = st["weapon"]
+		h.add_child(UiKit.label(("%s %s" % [wd.get("name", wd.get("short", "")), wd.get("mark_name", "")]).strip_edges(), 15, UiKit.TEXT))
+		lv.add_child(h)
+	if stats.ability != "":
+		lv.add_child(UiKit.label("Ability: %s" % GameData.ABILITIES[stats.ability]["name"], 15, UiKit.GOLD))
 	for m in stats.modules:
-		mods.append(str(GameData.ACTIVE_MODULES[m]["name"]))
-	right.add_child(UiKit.wrap("Modules: " + (", ".join(mods) if mods.size() > 0 else "none"), 14, UiKit.DIM, 540))
+		lv.add_child(UiKit.label("Module: %s" % GameData.ACTIVE_MODULES[m]["name"], 15, Color(0.6, 1.0, 0.85)))
 	var val := stats.validate()
 	for e in val["errors"]:
 		right.add_child(UiKit.wrap(str(e), 14, Color(1.0, 0.4, 0.35), 540))
@@ -147,9 +182,48 @@ func _build() -> void:
 	var launch := UiKit.button("Launch", _launch, 260)
 	launch.disabled = not bool(val["ok"])
 	actions.add_child(launch)
-	actions.add_child(UiKit.button("Fitting Dock", _fitting, 220))
+	if Profile.tab_unlocked("fitting"):
+		actions.add_child(UiKit.button("Change Loadout", _fitting, 240))
 	actions.add_child(UiKit.button("Back", _back, 180))
 	launch.call_deferred("grab_focus")
+
+
+func _tip() -> String:
+	if source.get("kind", "") != "campaign":
+		return ""
+	var g := GameData.global_stage(cfg)
+	if g > 10:
+		return ""
+	return str(TIPS[(g - 1) % TIPS.size()])
+
+
+func _reward_parts() -> Array:
+	var r: Dictionary = cfg.get("rewards", {})
+	var mult: float = float(GameData.DIFFICULTIES[tier]["reward"])
+	var mod: String = str(cfg.get("modifier", ""))
+	if mod != "":
+		mult *= float(GameData.MODIFIERS[mod]["reward"])
+	if str(cfg.get("mode", "")) == "classic":
+		return ["Salvage and mastery XP", _reward_text()]
+	var first: bool = source.get("kind", "") == "campaign" and not Profile.stage_cleared(str(source["id"]))
+	var sal := float(r.get("salvage", 0)) * mult
+	var rsch := float(r.get("research", 0)) * mult
+	if source.get("kind", "") == "campaign" and not first and not bool(cfg.get("remix", false)):
+		sal *= 0.6
+		rsch *= 0.5
+	var parts: PackedStringArray = []
+	if sal > 0.0:
+		parts.append("%d Salvage" % int(sal))
+	if rsch > 0.0:
+		parts.append("%d Research" % int(rsch))
+	if first and int(r.get("intel", 0)) > 0:
+		parts.append("%d Intel" % int(r.get("intel", 0)))
+	var note := "Plus any Salvage you pick up. Better grades pay more."
+	if first:
+		note = "First clear reward. " + note
+	elif source.get("kind", "") == "campaign":
+		note = "Replay reward. Each new bonus goal adds +3 Research."
+	return ["  -  ".join(parts), note]
 
 
 func _reward_text() -> String:

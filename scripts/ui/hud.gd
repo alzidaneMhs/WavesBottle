@@ -2,6 +2,7 @@ class_name Hud
 extends Control
 
 const CARD_W := 140.0
+const SIDE_TITLES := {"port": "LEFT", "starboard": "RIGHT", "bow": "FRONT", "stern": "REAR", "turret": "TURRET"}
 
 var run
 var font: Font
@@ -83,7 +84,9 @@ func _draw() -> void:
 		_draw_fog(s)
 		_draw_fog_cues()
 	_draw_status(s)
-	if run.mode == "practice":
+	if run.coach != null:
+		_draw_coach(s)
+	elif run.mode == "practice":
 		_draw_practice(s)
 	elif run.logic != null:
 		_draw_objectives(s)
@@ -155,7 +158,7 @@ func _draw_status(_s: Vector2) -> void:
 	if ratio <= 0.3 and p.alive:
 		var a := 0.6 + 0.4 * sin(clock * 8.0)
 		_text(Vector2(26, 84), "HULL CRITICAL", 16, Color(1.0, 0.35, 0.3, a))
-	elif p.god_mode:
+	elif p.god_mode and run.coach == null:
 		_text(Vector2(26, 84), "INVULNERABLE", 16, UiKit.GOLD)
 	elif p.immune > 0.0:
 		_text(Vector2(26, 84), "EVADING", 16, Color(0.6, 1.0, 0.85))
@@ -164,7 +167,7 @@ func _draw_status(_s: Vector2) -> void:
 	_text(Vector2(26, 84), "SALVAGE  %d" % run.salvage, 18, GameData.COL_SALVAGE, HORIZONTAL_ALIGNMENT_RIGHT, 312.0)
 	match run.mode:
 		"practice":
-			_text(Vector2(26, 114), "SEA TRIALS", 18, UiKit.ACCENT)
+			_text(Vector2(26, 114), "TRAINING" if run.coach != null else "SEA TRIALS", 18, UiKit.ACCENT)
 			_text(Vector2(26, 140), "Enemies on the water: %d" % run.enemies.size(), 16, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, 312.0)
 		"classic":
 			_text(Vector2(26, 114), "WAVE %d / %d" % [run.wave, GameData.MAX_WAVE], 18, UiKit.ACCENT)
@@ -257,24 +260,30 @@ func _draw_wake(s: Vector2) -> void:
 	var wk: WakeSystem = run.wake
 	var x := s.x - 352.0
 	_panel(Rect2(x, 12, 340, 150))
+	_focus(Rect2(x, 12, 340, 150), "wake")
 	var col: Color = GameData.wake_color(wk.tier)
 	var big := 34 + int(wake_pulse * 14.0)
 	_text(Vector2(x + 14, 52), "WAKE %s" % GameData.WAKE_ROMAN[wk.tier], big, col)
 	_text(Vector2(x + 14, 52), "x%.1f" % wk.multiplier(), 30, col, HORIZONTAL_ALIGNMENT_RIGHT, 312.0)
 	_text(Vector2(x + 14, 76), str(GameData.WAKE_NAMES[wk.tier]).to_upper(), 15, UiKit.DIM)
-	var next_txt := "MAX TIER" if wk.tier >= 5 else "next tier"
+	var next_txt := "MAX TIER" if wk.tier >= 5 else "next: tier %s" % GameData.WAKE_ROMAN[wk.tier + 1]
 	_text(Vector2(x + 14, 76), next_txt, 13, UiKit.DIM, HORIZONTAL_ALIGNMENT_RIGHT, 312.0)
 	_bar(Rect2(x + 14, 84, 312, 12), wk.ratio(), col)
 	var state_col := UiKit.ACCENT
+	var state_txt := ""
 	match wk.state_text():
 		"DECAYING":
 			state_col = Color(1.0, 0.45, 0.35, 0.7 + 0.3 * sin(clock * 10.0))
+			state_txt = "FADING - keep attacking!"
 		"HOLD":
 			state_col = UiKit.DIM
+		_:
+			state_txt = "Holding  (fades in %.1fs)" % maxf(0.0, wk.grace() - wk.idle)
+	if wk.tier == 0 and wk.progress <= 0.0 and wk.state_text() != "HOLD":
+		state_txt = "Hit enemies to build Wake"
+		state_col = UiKit.DIM
 	draw_rect(Rect2(x + 14, 100, 312.0 * wk.grace_ratio(), 3), Color(state_col, 0.8))
-	_text(Vector2(x + 14, 124), wk.state_text(), 16, state_col)
-	if wk.state_text() == "STEADY":
-		_text(Vector2(x + 110, 124), "decay in %.1fs" % maxf(0.0, wk.grace() - wk.idle), 14, UiKit.DIM)
+	_text(Vector2(x + 14, 124), state_txt, 16, state_col, HORIZONTAL_ALIGNMENT_LEFT, 312.0)
 	if run.scanner_timer > 0.0:
 		_text(Vector2(x + 14, 124), "SCANNING %.0fs" % run.scanner_timer, 14, Color(0.6, 1.0, 0.9), HORIZONTAL_ALIGNMENT_RIGHT, 312.0)
 	if wk.reason_timer > 0.0:
@@ -300,13 +309,20 @@ func _draw_wind(s: Vector2) -> void:
 	var tip := c + dir * alen
 	draw_line(c - dir * alen * 0.6, tip, Color(0.75, 0.95, 1.0), 3.0)
 	draw_colored_polygon(PackedVector2Array([tip + dir * 8.0, tip + dir.rotated(PI / 2.0) * 6.0, tip - dir.rotated(PI / 2.0) * 6.0]), Color(0.75, 0.95, 1.0))
-	_text(Vector2(x + 14, 196), "WIND", 15, UiKit.DIM)
-	_text(Vector2(x + 14, 222), "Strength %d%%" % int(w.strength * 100.0), 18, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, 200.0)
+	_text(Vector2(x + 14, 196), "WIND  %d%%" % int(w.strength * 100.0), 15, UiKit.DIM)
 	var p: PlayerShip = run.player
 	var eff: float = w.propulsion_factor(p.forward(), run.stats)
-	var eff_txt := "Sailing %+d%%" % int(round((eff - 1.0) * 100.0))
-	var ec := Color(0.5, 1.0, 0.7) if eff >= 1.0 else Color(1.0, 0.6, 0.5)
-	_text(Vector2(x + 14, 248), eff_txt, 16, ec, HORIZONTAL_ALIGNMENT_LEFT, 200.0)
+	var pct := int(round((eff - 1.0) * 100.0))
+	var eff_txt := "Crosswind"
+	var ec := UiKit.TEXT
+	if pct >= 2:
+		eff_txt = "Tailwind  +%d%% speed" % pct
+		ec = Color(0.5, 1.0, 0.7)
+	elif pct <= -2:
+		eff_txt = "Headwind  %d%% speed" % pct
+		ec = Color(1.0, 0.6, 0.5)
+	_text(Vector2(x + 14, 228), eff_txt, 18, ec, HORIZONTAL_ALIGNMENT_LEFT, 210.0)
+	_text(Vector2(x + 14, 252), "Arrow = where the wind blows", 13, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, 210.0)
 	if run.hazards.in_storm(p.position):
 		var sa := 0.6 + 0.4 * sin(clock * 7.0)
 		_text(Vector2(x + 14, 284), "IN STORM - strong gusts", 15, Color(0.85, 0.9, 1.0, sa), HORIZONTAL_ALIGNMENT_LEFT, 210.0)
@@ -317,8 +333,6 @@ func _draw_wind(s: Vector2) -> void:
 		_text(Vector2(x + 14, 284), "WIND SHIFT INCOMING", 15, Color(1.0, 0.85, 0.4, 0.5 + a), HORIZONTAL_ALIGNMENT_LEFT, 210.0)
 	elif w.shifting:
 		_text(Vector2(x + 14, 284), "Wind is turning", 15, Color(1.0, 0.85, 0.4), HORIZONTAL_ALIGNMENT_LEFT, 210.0)
-	else:
-		_text(Vector2(x + 14, 284), "Steady wind", 15, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, 210.0)
 
 
 func _card(rect: Rect2, title: String, title_col: Color, key: String, line: String, ratio: float, is_ready: bool, status: String) -> void:
@@ -362,7 +376,8 @@ func _draw_weapons(s: Vector2) -> void:
 					elif slot == "starboard":
 						key += "/RMB"
 				var mk: String = str(w.get("mark_name", "Mk I")).replace("Mk ", "")
-				_card(r, "STBD" if slot == "starboard" else GameData.SLOT_LABELS[slot], GameData.SLOT_COLORS[slot], "[%s]" % key, "%s %s" % [w["short"], mk], p.reload_ratio(slot), is_ready, "READY" if is_ready else "RELOADING")
+				_focus(r, slot)
+				_card(r, SIDE_TITLES.get(slot, GameData.SLOT_LABELS[slot]), GameData.SLOT_COLORS[slot], "[%s]" % key, "%s %s" % [w["short"], mk], p.reload_ratio(slot), is_ready, "READY" if is_ready else "RELOADING")
 			"ability":
 				var ad: Dictionary = p.ability_def()
 				var rdy := p.ability_ready()
@@ -391,11 +406,14 @@ func _draw_weapons(s: Vector2) -> void:
 							status = "FOCUSED"
 						elif not rdy:
 							status = "HOLD STEADY"
+				_focus(r, "ability")
 				var active := rdy or p.bracing or p.surge_timer > 0.0 or p.raid_timer > 0.0 or p.focus_timer > 0.0
 				_card(r, "ABILITY", Color(1.0, 0.85, 0.45), "[%s]" % Controls.short_text("ability"), str(ad.get("name", "")), p.ability_ratio(), active, status)
 			"module":
 				var i: int = c[1]
 				var mid: String = run.stats.modules[i]
+				if i == 0:
+					_focus(r, "module")
 				var md: Dictionary = GameData.ACTIVE_MODULES[mid]
 				var mr := p.module_ratio(i)
 				var charges: int = int(p.module_charges[i])
@@ -407,6 +425,7 @@ func _draw_weapons(s: Vector2) -> void:
 		cx += CARD_W + gap
 	var tx := x0 + total + 12.0
 	_panel(Rect2(tx, y, thr_w, 98))
+	_focus(Rect2(tx, y, thr_w, 98), "throttle")
 	_text(Vector2(tx + 10, y + 20.0), "THROTTLE", 13, UiKit.DIM)
 	var thr_rect := Rect2(tx + 14, y + 28.0, 14, 62)
 	draw_rect(thr_rect, Color(0, 0, 0, 0.55))
@@ -469,6 +488,45 @@ func _draw_banner(s: Vector2) -> void:
 	draw_rect(Rect2(bx, y - 46.0, w, 80), Color(0.0, 0.02, 0.06, 0.55 * a))
 	_text(Vector2(bx + 12.0, y), str(b["title"]), 40, Color(col, a), HORIZONTAL_ALIGNMENT_CENTER, w - 24.0)
 	_text(Vector2(bx + 12.0, y + 26.0), str(b["sub"]), 18, Color(UiKit.TEXT, a), HORIZONTAL_ALIGNMENT_CENTER, w - 24.0)
+
+
+func _focus(rect: Rect2, key: String) -> void:
+	if run.coach == null or run.coach.highlight() != key:
+		return
+	var a := 0.55 + 0.45 * sin(clock * 6.0)
+	draw_rect(rect.grow(5.0), Color(UiKit.GOLD, a), false, 4.0)
+
+
+func _wrap_lines(t: String, fsize: int, width: float) -> Array:
+	var lines: Array = []
+	var cur := ""
+	for word in t.split(" "):
+		var test := word if cur == "" else cur + " " + word
+		if font.get_string_size(test, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x > width and cur != "":
+			lines.append(cur)
+			cur = word
+		else:
+			cur = test
+	if cur != "":
+		lines.append(cur)
+	return lines
+
+
+func _draw_coach(s: Vector2) -> void:
+	var co: TrainingCoach = run.coach
+	var w := minf(900.0, s.x - 760.0)
+	var lines := _wrap_lines(co.text(), 18, w - 32.0)
+	var h := 78.0 + lines.size() * 24.0
+	var r := Rect2((s.x - w) * 0.5, s.y - 130.0 - h, w, h)
+	zones.append(r)
+	var done := co.pause_timer > 0.0
+	draw_rect(r, Color(0.02, 0.07, 0.13, 0.9))
+	draw_rect(r, Color(UiKit.GOLD if done else UiKit.ACCENT, 0.65 + 0.3 * sin(clock * 4.0)), false, 2.0)
+	_text(r.position + Vector2(16, 24), co.progress_text(), 13, UiKit.DIM)
+	_text(r.position + Vector2(16, 24), "[%s] pause / skip" % Controls.short_text("pause"), 13, UiKit.DIM, HORIZONTAL_ALIGNMENT_RIGHT, w - 32.0)
+	_text(r.position + Vector2(16, 52), "Done!" if done else co.title(), 24, UiKit.GOLD)
+	for i in lines.size():
+		_text(r.position + Vector2(16, 82 + i * 24), str(lines[i]), 18, Color(UiKit.TEXT, 0.5) if done else UiKit.TEXT)
 
 
 func _draw_tutorial(s: Vector2) -> void:

@@ -24,9 +24,12 @@ func _ready() -> void:
 		v.add_child(UiKit.label(info, 16, UiKit.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	var resume := UiKit.button("Resume", Callable(main, "resume"))
 	v.add_child(resume)
+	v.add_child(UiKit.button("How to Play", Callable(main, "show_guide").bind(Callable(main, "reopen_pause"), "shooting")))
 	v.add_child(UiKit.button("Settings", Callable(main, "open_settings").bind(Callable(main, "reopen_pause"))))
 	var leave := "Abandon Mission"
-	if run != null and run.mode == "practice":
+	if run != null and run.coach != null:
+		leave = "End Training"
+	elif run != null and run.mode == "practice":
 		leave = "End Sea Trials"
 	elif run != null and run.mode == "classic":
 		leave = "Abandon Run"
@@ -47,6 +50,8 @@ func _ready() -> void:
 	row.add_child(keys)
 	keys.add_child(UiKit.label("CONTROLS", 16, UiKit.ACCENT))
 	for action in Controls.ORDER:
+		if run != null and not _relevant(str(action)):
+			continue
 		var h := HBoxContainer.new()
 		var l := UiKit.label(str(Controls.LABELS[action]), 15, UiKit.DIM)
 		l.custom_minimum_size = Vector2(230, 0)
@@ -61,6 +66,19 @@ func _ready() -> void:
 		for m in run.stats.modules:
 			keys.add_child(UiKit.wrap("Module: %s - %s" % [GameData.ACTIVE_MODULES[m]["name"], GameData.ACTIVE_MODULES[m]["desc"]], 14, Color(0.6, 1.0, 0.85), 420))
 	resume.call_deferred("grab_focus")
+
+
+func _relevant(action: String) -> bool:
+	match action:
+		"fire_port", "fire_starboard", "fire_bow", "fire_stern", "fire_turret":
+			return run.player.slots.has(action.trim_prefix("fire_"))
+		"ability":
+			return run.stats.ability != ""
+		"module_1":
+			return run.stats.modules.size() >= 1
+		"module_2":
+			return run.stats.modules.size() >= 2
+	return true
 
 
 func _unhandled_input(event: InputEvent) -> void:

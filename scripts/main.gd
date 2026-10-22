@@ -77,6 +77,34 @@ func show_codex(back: Callable) -> void:
 	_set_screen(c)
 
 
+func show_guide(back: Callable, topic: String = "basics") -> void:
+	var g := GuideScreen.new()
+	g.main = self
+	g.on_back = back
+	g.topic = topic
+	_set_screen(g)
+
+
+func start_training() -> void:
+	var cfg := MissionBuilder.training()
+	var build := Profile.default_build("wayfarer")
+	last_launch = {"cfg": cfg, "ship": "wayfarer", "build": build, "source": {"kind": "training"}}
+	_start(cfg, "wayfarer", build)
+
+
+func finish_training() -> void:
+	Profile.mark_help("training")
+	show_main_menu()
+
+
+func play_next() -> void:
+	var nxt := Profile.next_stage()
+	if nxt == "":
+		show_harbor("campaign")
+		return
+	open_briefing({"kind": "campaign", "id": nxt})
+
+
 func show_credits() -> void:
 	var c := CreditsScreen.new()
 	c.main = self
@@ -149,8 +177,11 @@ func retry() -> void:
 
 func abandon() -> void:
 	var mode := run.mode if run != null else ""
+	var training := run != null and run.coach != null
 	_clear_run()
-	if mode == "practice" or mode == "classic":
+	if training:
+		show_main_menu()
+	elif mode == "practice" or mode == "classic":
 		show_harbor("operations")
 	else:
 		show_harbor("campaign")

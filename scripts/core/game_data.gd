@@ -7,6 +7,7 @@ const EnemiesData = preload("res://data/enemies.gd")
 const MissionsData = preload("res://data/missions.gd")
 const ProgressionData = preload("res://data/progression.gd")
 const WorldData = preload("res://data/world.gd")
+const GuideData = preload("res://data/guide.gd")
 
 const ARENA_SIZE := Vector2(3200, 2200)
 const ARENA_MARGIN := 1200.0
@@ -173,6 +174,9 @@ var DIFFICULTIES: Dictionary = ProgressionData.DIFFICULTIES
 var DIFFICULTY_ORDER: Array = ProgressionData.DIFFICULTY_ORDER
 var MODIFIERS: Dictionary = ProgressionData.MODIFIERS
 var REGIONS: Array = WorldData.REGIONS
+var GUIDE: Array = GuideData.TOPICS
+var TAB_HELP: Dictionary = GuideData.TAB_HELP
+var TAB_UNLOCK: Dictionary = GuideData.TAB_UNLOCK
 var REGION_STAGES: Dictionary = WorldData.REGION_STAGES
 var LORE: Dictionary = WorldData.LORE
 var LORE_ORDER: Array = WorldData.LORE_ORDER

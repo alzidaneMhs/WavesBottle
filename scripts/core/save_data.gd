@@ -65,6 +65,7 @@ func defaults() -> Dictionary:
 		"contracts": {"active": [], "cursor": 0, "done": 0},
 		"palette": "classic",
 		"tutorial_done": false,
+		"help": {},
 	}
 
 

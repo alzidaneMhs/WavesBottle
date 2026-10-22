@@ -100,6 +100,15 @@ static func practice() -> Dictionary:
 	return {"mode": "practice", "id": "practice", "name": "Sea Trials", "type": "Practice", "label": "SEA TRIALS", "objective": "practice", "flow": "none", "waves": [], "reefs": 5, "hazards": {}, "optional": [], "region": 1, "stage": 0, "difficulty": "standard", "modifier": ""}
 
 
+static func training() -> Dictionary:
+	var m := practice()
+	m["training"] = true
+	m["name"] = "Training"
+	m["label"] = "TRAINING"
+	m["reefs"] = 0
+	return m
+
+
 static func classic() -> Dictionary:
 	return {"mode": "classic", "id": "op:classic", "name": "Classic Run", "type": "Score Attack", "label": "CLASSIC RUN", "objective": "classic", "flow": "classic", "waves": [], "reefs": 7, "hazards": {}, "optional": [], "region": 1, "stage": 0, "difficulty": "standard", "modifier": ""}
 

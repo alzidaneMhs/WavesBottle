@@ -681,6 +681,10 @@ func _record_stage(mid: String, tier: String, grade: String, result: Dictionary,
 			notes.append("Unlocked wake: Abyssal Glow")
 			notes.append("Advanced utility modules: Depth Charges, Overdrive")
 			notes.append("Boss Rematch can now face the Leviathan Engine")
+	if not was_cleared:
+		for tid in GameData.TAB_UNLOCK.keys():
+			if str(GameData.TAB_UNLOCK[tid]) == mid:
+				notes.append("New in the Harbor: %s - %s" % [GameData.TAB_HELP[tid][0], GameData.TAB_HELP[tid][1]])
 	for i in GameData.SHIP_ORDER.size():
 		var sid: String = GameData.SHIP_ORDER[i]
 		if before_ships[i] == "locked" and ship_status(sid)["state"] == "buyable":
@@ -693,6 +697,29 @@ func _record_stage(mid: String, tier: String, grade: String, result: Dictionary,
 		var req: Dictionary = GameData.RESEARCH[rid]["req"]
 		if req.get("stage", "") == mid and not was_cleared:
 			notes.append("Research available: %s" % research_name(rid))
+
+
+func tab_unlocked(id: String) -> bool:
+	var req: String = str(GameData.TAB_UNLOCK.get(id, ""))
+	return req == "" or stage_cleared(req)
+
+
+func help_seen(key: String) -> bool:
+	return bool((d()["help"] as Dictionary).get(key, false))
+
+
+func mark_help(key: String) -> void:
+	if help_seen(key):
+		return
+	d()["help"][key] = true
+	SaveData.save()
+
+
+func next_stage() -> String:
+	for id in GameData.all_stages():
+		if stage_unlocked(id) and not stage_cleared(id):
+			return id
+	return ""
 
 
 func op_unlocked(id: String) -> bool:

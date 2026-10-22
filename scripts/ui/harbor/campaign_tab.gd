@@ -8,9 +8,14 @@ func build() -> void:
 	add_theme_constant_override("separation", 14)
 	var regions := UiKit.hbox(8)
 	add_child(regions)
+	var shown_locked := false
 	for r in GameData.REGIONS:
 		var id: int = int(r["id"])
 		var unlocked := Profile.region_unlocked(id)
+		if not unlocked:
+			if shown_locked:
+				continue
+			shown_locked = true
 		var txt := "%s  %s" % [["", "I", "II", "III", "IV", "V"][id], str(r["name"]).replace("The ", "")]
 		var b := UiKit.button(txt, _pick_region.bind(id), 240)
 		b.toggle_mode = true
@@ -32,11 +37,7 @@ func build() -> void:
 	iv.add_child(UiKit.label("REGION %s  |  STAGES %s" % [["", "I", "II", "III", "IV", "V"][int(reg["id"])], reg["stages"]], 14, UiKit.DIM))
 	iv.add_child(UiKit.label(str(reg["name"]), 30, reg["glint"]))
 	iv.add_child(UiKit.wrap(str(reg["theme"]), 16, UiKit.TEXT, 1180))
-	var facts := UiKit.hbox(24)
-	iv.add_child(facts)
-	facts.add_child(UiKit.label("Pressure: %s" % reg["pressure"], 15, UiKit.DIM))
-	facts.add_child(UiKit.label("Faction: %s" % reg["faction"], 15, UiKit.DIM))
-	facts.add_child(UiKit.label("Boss: %s" % reg["boss"], 15, Color(1.0, 0.65, 0.35)))
+	iv.add_child(UiKit.label("Final boss: %s" % reg["boss"], 15, Color(1.0, 0.65, 0.35)))
 	var stages: Array = GameData.REGION_STAGES.get(int(reg["id"]), [])
 	var prev: Dictionary = GameData.region(int(reg["id"]) - 1) if int(reg["id"]) > 1 else {}
 	if bool(reg["available"]) and not stages.is_empty() and not Profile.region_unlocked(int(reg["id"])) and not prev.is_empty():
@@ -71,12 +72,15 @@ func _stage_card(id: String) -> Control:
 	var unlocked := Profile.stage_unlocked(id)
 	var cleared := Profile.stage_cleared(id)
 	var boss := str(m.get("objective", "")) == "boss"
+	var is_next := id == Profile.next_stage()
 	var border := Color(1.0, 0.55, 0.35) if boss else (GameData.COL_SALVAGE if cleared else Color(0.2, 0.5, 0.65))
+	if is_next:
+		border = UiKit.ACCENT
 	var card := UiKit.card(border, 12.0)
 	card.custom_minimum_size = Vector2(236, 168)
 	var v := UiKit.vbox(4)
 	card.add_child(v)
-	v.add_child(UiKit.label("STAGE %s" % GameData.stage_label(id), 13, UiKit.DIM))
+	v.add_child(UiKit.label("STAGE %s%s" % [GameData.stage_label(id), "   NEXT" if is_next else ""], 13, UiKit.ACCENT if is_next else UiKit.DIM))
 	v.add_child(UiKit.wrap(str(m["name"]), 19, Color.WHITE if unlocked else UiKit.DIM, 210))
 	v.add_child(UiKit.label(str(m["type"]), 14, Color(1.0, 0.65, 0.35) if boss else UiKit.ACCENT))
 	var opts: Array = m.get("optional", [])
@@ -85,12 +89,12 @@ func _stage_card(id: String) -> Control:
 		if Profile.optional_done(id, i):
 			done += 1
 	var grade := Profile.best_grade(id)
-	var line := "Locked" if not unlocked else ("Best grade %s   Optional %d/%d" % [grade, done, opts.size()] if cleared else "Not yet cleared")
+	var line := "Locked" if not unlocked else ("Grade %s   Bonus goals %d/%d" % [grade, done, opts.size()] if cleared else "Not cleared yet")
 	if unlocked and Profile.remix_active():
 		var rg: String = str((Profile.cleared().get(id, {}) as Dictionary).get("remix", ""))
 		line = "Remix grade %s" % rg if rg != "" else "Remix not yet cleared"
 	v.add_child(UiKit.label(line, 13, GameData.COL_SALVAGE if cleared else UiKit.DIM))
-	var b := UiKit.button("Briefing" if unlocked else "Locked", _open.bind(id), 200)
+	var b := UiKit.button("Locked" if not unlocked else ("Replay" if cleared else "Play"), _open.bind(id), 200)
 	b.custom_minimum_size = Vector2(200, 36)
 	b.disabled = not unlocked
 	v.add_child(b)

@@ -95,6 +95,7 @@ var mine_kills := 0
 var weak_hits := 0
 var practice_r2 := 0
 var practice_boss := 0
+var coach: TrainingCoach = null
 var distortion: Dictionary = {}
 var jammed := false
 var sonar_timer := 0.0
@@ -178,12 +179,17 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.run = self
 	hud_layer.add_child(hud)
-	tutorial_active = mode == "practice" or (bool(cfg.get("tutorial", false)) and not bool(SaveData.data["tutorial_done"]))
+	tutorial_active = (mode == "practice" and not bool(cfg.get("training", false))) or (bool(cfg.get("tutorial", false)) and not bool(SaveData.data["tutorial_done"]))
 	match mode:
 		"practice":
 			player.god_mode = true
 			wake.hold = false
-			banner("SEA TRIALS", "Practice freely. Number and letter keys spawn enemies and hazards.", GameData.COL_PORT)
+			if bool(cfg.get("training", false)):
+				coach = TrainingCoach.new()
+				coach.run = self
+				add_child(coach)
+			else:
+				banner("SEA TRIALS", "Practice freely. Number and letter keys spawn enemies and hazards.", GameData.COL_PORT)
 		"classic":
 			start_wave(1)
 		_:
@@ -915,6 +921,8 @@ func on_checkpoint(_i: int) -> void:
 
 
 func tutorial_event(id: String) -> void:
+	if coach != null:
+		coach.on_event(id)
 	if not tutorial_active:
 		return
 	tutorial_done[id] = true
@@ -1045,7 +1053,7 @@ func _compass(v: Vector2) -> String:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if mode != "practice" or state == "ended":
+	if mode != "practice" or state == "ended" or coach != null:
 		return
 	var ke := event as InputEventKey
 	if ke == null or not ke.pressed or ke.echo:

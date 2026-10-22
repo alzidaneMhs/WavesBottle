@@ -1,6 +1,8 @@
 class_name FittingTab
 extends VBoxContainer
 
+const SIDE_NAMES := {"port": "Left (Port)", "starboard": "Right (Stbd)", "bow": "Front (Bow)", "stern": "Rear (Stern)", "turret": "Turret"}
+
 var harbor
 var ship := ""
 var index := 0
@@ -69,23 +71,24 @@ func _rebuild() -> void:
 	mid.custom_minimum_size = Vector2(840, 0)
 	row.add_child(mid)
 	var def: Dictionary = GameData.SHIPS[ship]
-	mid.add_child(UiKit.label("WEAPON STATIONS", 16, UiKit.ACCENT))
+	mid.add_child(UiKit.label("WEAPONS  (one weapon for each gun position)", 16, UiKit.ACCENT))
 	for sd in Profile.ship_stations(ship):
 		mid.add_child(_station_row(str(sd["slot"]), int(sd["barrels"])))
-	mid.add_child(UiKit.label("UTILITY MODULES  (active, one key each)", 16, UiKit.ACCENT))
+	mid.add_child(UiKit.label("MODULES  (press their key in battle to use them)", 16, UiKit.ACCENT))
 	for i in int(def["utility"]):
 		mid.add_child(_module_row(i))
-	mid.add_child(UiKit.label("PASSIVE SYSTEMS  (one Wake Specialization at most)", 16, UiKit.ACCENT))
+	mid.add_child(UiKit.label("PASSIVES  (always active, max one Wake Specialization)", 16, UiKit.ACCENT))
 	for i in Profile.passive_slots(ship):
 		mid.add_child(_passive_row(i))
 	var actions := UiKit.hbox(10)
 	mid.add_child(actions)
 	actions.add_child(UiKit.button("Save Build", save_current, 180))
-	actions.add_child(UiKit.button("Duplicate", _duplicate, 150))
-	var del := UiKit.button("Delete", _delete, 130)
-	del.disabled = builds.size() <= 1
-	actions.add_child(del)
-	actions.add_child(UiKit.button("Restore Saved", _revert, 180))
+	actions.add_child(UiKit.button("Undo Changes", _revert, 180))
+	if Profile.build_slots(ship) > 1:
+		actions.add_child(UiKit.button("Copy Build", _duplicate, 150))
+		var del := UiKit.button("Delete", _delete, 130)
+		del.disabled = builds.size() <= 1
+		actions.add_child(del)
 	status_label = UiKit.label("", 15, UiKit.GOLD)
 	mid.add_child(status_label)
 	_refresh_stats()
@@ -93,7 +96,7 @@ func _rebuild() -> void:
 
 func _station_row(slot: String, barrels: int) -> Control:
 	var h := UiKit.hbox(10)
-	var lab := UiKit.label("%s  x%d" % [GameData.SLOT_LABELS[slot], barrels], 15, GameData.SLOT_COLORS[slot])
+	var lab := UiKit.label("%s  x%d" % [SIDE_NAMES.get(slot, GameData.SLOT_LABELS[slot]), barrels], 15, GameData.SLOT_COLORS[slot])
 	lab.custom_minimum_size = Vector2(150, 0)
 	h.add_child(lab)
 	var keys: Array = Profile.owned_weapon_keys(slot)
@@ -107,7 +110,10 @@ func _station_row(slot: String, barrels: int) -> Control:
 	h.add_child(UiKit.option(names, keys.find(cur_key), _set_weapon.bind(slot, keys), 470))
 	var parts2: Array = GameData.split_key(cur_key)
 	var wd := GameData.weapon_stats(parts2[0], parts2[1])
-	h.add_child(UiKit.label("M %.1f  P %.0f" % [float(wd.get("mass", 1.0)) * float(barrels) / 3.0, float(wd.get("power", 0.0))], 13, UiKit.DIM))
+	var mp := UiKit.label("Mass %.1f  Pwr %.0f" % [float(wd.get("mass", 1.0)) * float(barrels) / 3.0, float(wd.get("power", 0.0))], 13, UiKit.DIM)
+	mp.tooltip_text = "How much Mass and Power this weapon uses. Your totals must stay under the ship's limits."
+	mp.mouse_filter = Control.MOUSE_FILTER_STOP
+	h.add_child(mp)
 	return h
 
 

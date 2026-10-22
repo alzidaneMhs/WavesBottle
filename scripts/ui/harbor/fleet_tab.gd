@@ -61,22 +61,20 @@ func _detail(id: String) -> Control:
 	row.add_child(stats_card)
 	var sv := UiKit.vbox(4)
 	stats_card.add_child(sv)
-	sv.add_child(UiKit.label("BASE STATS", 15, UiKit.ACCENT))
+	sv.add_child(UiKit.label("STATS", 15, UiKit.ACCENT))
 	var stt: Dictionary = s["stats"]
 	var lines := [
 		["Hull", str(int(stt["max_hull"]))],
-		["Top speed / Acceleration", "%d / %d" % [int(stt["max_speed"]), int(stt["accel"])]],
-		["Turn rate", "%.2f" % float(stt["turn"])],
-		["Lateral grip / drift", "%.1f / %.1f" % [float(stt["lateral"]), float(stt["drift_lateral"])]],
-		["Power capacity", "%.0f" % float(stt["power_cap"])],
-		["Mass rating", "%.0f" % float(stt["mass_rating"])],
-		["Utility / passive slots", "%d / %d" % [int(s["utility"]), Profile.passive_slots(id)]],
+		["Top speed", "%d" % int(stt["max_speed"])],
+		["Turning", "%.2f" % float(stt["turn"])],
+		["Module / passive slots", "%d / %d" % [int(s["utility"]), Profile.passive_slots(id)]],
 	]
 	var stations: PackedStringArray = []
 	for sd in s["stations"]:
 		var locked := str((sd as Dictionary).get("unlock", "")) != "" and not Profile.has_item("upgrades", str(sd["unlock"]))
-		stations.append("%s x%d%s" % [GameData.SLOT_LABELS[sd["slot"]], int(sd["barrels"]), " (Turret Ring)" if locked else ""])
-	lines.append(["Weapon stations", ", ".join(stations)])
+		if not locked:
+			stations.append("%s x%d" % [FittingTab.SIDE_NAMES.get(sd["slot"], sd["slot"]), int(sd["barrels"])])
+	lines.append(["Guns", ", ".join(stations)])
 	for l in lines:
 		var h := HBoxContainer.new()
 		var a := UiKit.label(str(l[0]), 15, UiKit.DIM)
@@ -126,11 +124,11 @@ func _mastery(id: String) -> Control:
 	v.add_child(UiKit.label("MASTERY LEVEL %d / 10" % lvl, 16, UiKit.GOLD))
 	v.add_child(UiKit.bar(float(prog[0]), UiKit.GOLD, 420, 10))
 	v.add_child(UiKit.label("%d / %d XP" % [int(prog[1]), int(prog[2])], 13, UiKit.DIM))
-	var un: PackedStringArray = []
+	v.add_child(UiKit.wrap("Earn mastery XP by playing missions with this ship.", 13, UiKit.DIM, 420))
 	for l in GameData.MASTERY_UNLOCKS.keys():
-		var mark := "+" if lvl >= int(l) else "-"
-		un.append("%s Lv%d %s" % [mark, int(l), GameData.MASTERY_UNLOCKS[l]])
-	v.add_child(UiKit.wrap("   ".join(un), 13, UiKit.DIM, 420))
+		if lvl < int(l):
+			v.add_child(UiKit.wrap("Next reward at level %d: %s" % [int(l), GameData.MASTERY_UNLOCKS[l]], 14, UiKit.TEXT, 420))
+			break
 	var perks: Dictionary = GameData.SHIPS[id]["perks"]
 	var cur := Profile.perk(id)
 	var h := UiKit.hbox(8)
@@ -156,14 +154,20 @@ func _palettes() -> Control:
 	h.add_theme_constant_override("h_separation", 10)
 	h.add_theme_constant_override("v_separation", 8)
 	v.add_child(h)
+	var locked_count := 0
 	for pid in GameData.PALETTES.keys():
 		var pal: Dictionary = GameData.PALETTES[pid]
 		var ok := SaveData.is_unlocked(pid)
+		if not ok:
+			locked_count += 1
+			continue
 		var sel: bool = SaveData.data["palette"] == pid
 		var b := UiKit.button(("> " if sel else "") + str(pal["name"]) + ("" if ok else " (locked)"), _palette.bind(pid), 430)
 		b.disabled = not ok
 		b.tooltip_text = str(pal["unlock"])
 		h.add_child(b)
+	if locked_count > 0:
+		v.add_child(UiKit.label("%d more colors unlock as you progress." % locked_count, 13, UiKit.DIM))
 	return c
 
 

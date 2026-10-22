@@ -1,8 +1,8 @@
 class_name HarborScreen
 extends Control
 
-const TABS := [["campaign", "Campaign"], ["fleet", "Fleet"], ["fitting", "Fitting Dock"], ["research", "Research"], ["facilities", "Facilities"], ["contracts", "Contracts"], ["operations", "Operations"]]
-const CONTENT := Vector2(1270, 730)
+const TABS := [["campaign", "Campaign"], ["fitting", "Fitting Dock"], ["research", "Research"], ["fleet", "Fleet"], ["operations", "Operations"], ["facilities", "Facilities"], ["contracts", "Contracts"]]
+const CONTENT := Vector2(1270, 684)
 
 var main
 var tab := "campaign"
@@ -14,6 +14,8 @@ var prompt: Control = null
 var selected_region := 0
 var fleet_selected := ""
 var fitting_ship := ""
+var help_text: Label
+var help_popup: Control = null
 
 
 func _ready() -> void:
@@ -39,18 +41,43 @@ func _ready() -> void:
 	body.add_child(left)
 	for t in TABS:
 		var id: String = t[0]
-		var b := UiKit.button(str(t[1]), show_tab.bind(id), 210)
+		if not Profile.tab_unlocked(id):
+			continue
+		var txt := str(t[1])
+		if id != "campaign" and not Profile.help_seen("tab_" + id):
+			txt += "  NEW"
+		var b := UiKit.button(txt, show_tab.bind(id), 210)
 		b.toggle_mode = true
+		if txt.ends_with("NEW"):
+			b.add_theme_color_override("font_color", UiKit.GOLD)
 		left.add_child(b)
 		tab_buttons[id] = b
+	var locked := TABS.size() - tab_buttons.size()
+	if locked > 0:
+		left.add_child(UiKit.wrap("%d more section%s open as you clear stages" % [locked, "" if locked == 1 else "s"], 13, UiKit.DIM, 210))
 	left.add_child(UiKit.spacer(14))
+	left.add_child(UiKit.button("How to Play", _guide, 210))
+	if Profile.tab_unlocked("fitting"):
+		left.add_child(UiKit.button("Sea Trials", _sea_trials, 210))
 	left.add_child(UiKit.button("Codex", _open_codex, 210))
-	left.add_child(UiKit.button("Sea Trials", _sea_trials, 210))
-	left.add_child(UiKit.button("Settings", _settings, 210))
 	left.add_child(UiKit.button("Main Menu", _leave.bind("menu"), 210))
+	var right := UiKit.vbox(8)
+	body.add_child(right)
+	var strip := UiKit.hbox(12)
+	strip.custom_minimum_size = Vector2(CONTENT.x, 38)
+	right.add_child(strip)
+	help_text = UiKit.label("", 17, UiKit.TEXT)
+	help_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	help_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	strip.add_child(help_text)
+	var hb := UiKit.button("?  Help", _open_help, 130)
+	hb.custom_minimum_size = Vector2(130, 38)
+	strip.add_child(hb)
 	content_holder = Control.new()
 	content_holder.custom_minimum_size = CONTENT
-	body.add_child(content_holder)
+	right.add_child(content_holder)
+	if not Profile.tab_unlocked(tab):
+		tab = "campaign"
 	if selected_region <= 0:
 		selected_region = 1
 		for r in GameData.REGIONS:
@@ -94,6 +121,10 @@ func _sync_buttons() -> void:
 func _show(id: String) -> void:
 	tab = id
 	_sync_buttons()
+	var th: Array = GameData.TAB_HELP.get(id, ["", "", []])
+	help_text.text = str(th[1])
+	if not Profile.help_seen("tab_" + id):
+		call_deferred("_open_help")
 	if current != null:
 		current.queue_free()
 	var sc := UiKit.scroll(CONTENT)
@@ -165,6 +196,8 @@ func _resolve_prompt(target: String, choice: String) -> void:
 		main.show_codex(Callable(main, "show_harbor").bind(tab))
 	elif target == "trials":
 		main.start_practice(Profile.selected_ship())
+	elif target == "guide":
+		main.show_guide(Callable(main, "show_harbor").bind(tab), "harbor")
 	elif target == "settings":
 		main.open_settings(Callable(main, "show_harbor").bind(tab))
 	else:
@@ -177,6 +210,59 @@ func _guard(target: String) -> bool:
 		_ask_discard(target)
 		return true
 	return false
+
+
+func _open_help() -> void:
+	if help_popup != null:
+		help_popup.queue_free()
+	var th: Array = GameData.TAB_HELP.get(tab, [])
+	if th.is_empty():
+		return
+	help_popup = UiKit.dim_layer(0.6)
+	add_child(help_popup)
+	var c := UiKit.centered(help_popup)
+	var p := UiKit.panel()
+	c.add_child(p)
+	var v := UiKit.vbox(12)
+	v.custom_minimum_size = Vector2(700, 0)
+	p.add_child(v)
+	v.add_child(UiKit.label(str(th[0]), 32, UiKit.ACCENT))
+	v.add_child(UiKit.wrap(str(th[1]), 19, Color.WHITE, 700))
+	for line in th[2]:
+		var h := UiKit.hbox(10)
+		h.add_child(UiKit.label("-", 17, UiKit.GOLD))
+		h.add_child(UiKit.wrap(str(line), 17, UiKit.TEXT, 660))
+		v.add_child(h)
+	var row := UiKit.hbox(12)
+	v.add_child(row)
+	var ok := UiKit.button("Got it", _close_help, 240)
+	row.add_child(ok)
+	row.add_child(UiKit.button("Open full guide", _guide_from_help, 260))
+	ok.call_deferred("grab_focus")
+
+
+func _close_help() -> void:
+	if help_popup != null:
+		help_popup.queue_free()
+		help_popup = null
+	if not Profile.help_seen("tab_" + tab):
+		Profile.mark_help("tab_" + tab)
+		if tab_buttons.has(tab):
+			var b: Button = tab_buttons[tab]
+			b.text = b.text.trim_suffix("  NEW")
+			b.remove_theme_color_override("font_color")
+	if tab_buttons.has(tab):
+		(tab_buttons[tab] as Button).grab_focus()
+
+
+func _guide_from_help() -> void:
+	_close_help()
+	_guide()
+
+
+func _guide() -> void:
+	if not _guard("guide"):
+		main.show_guide(Callable(main, "show_harbor").bind(tab), "harbor")
 
 
 func _open_codex() -> void:
@@ -202,12 +288,15 @@ func _leave(target: String) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if prompt != null:
 		return
+	if help_popup != null:
+		if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+			get_viewport().set_input_as_handled()
+			_close_help()
+		return
 	var sh := UiKit.pad_shoulder(event)
 	if sh != 0:
 		get_viewport().set_input_as_handled()
-		var ids: Array = []
-		for t in TABS:
-			ids.append(t[0])
+		var ids: Array = tab_buttons.keys()
 		var nxt: String = ids[posmod(ids.find(tab) + sh, ids.size())]
 		show_tab(nxt)
 		if tab == nxt and tab_buttons.has(nxt):
